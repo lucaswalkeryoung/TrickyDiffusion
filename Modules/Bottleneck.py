@@ -42,4 +42,4 @@ class BottleneckBlock(networks.Module):
         x = self.inner(x)
         x = self.swish(self.norm2(self.conv2(x)))
 
-        return x + (residual / math.sqrt(2))
+        return x + residual

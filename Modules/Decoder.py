@@ -18,7 +18,7 @@ class UpscaleBlock(networks.Module):
     def __init__(self, i_channels: int, o_channels: int) -> None:
         super().__init__()
 
-        self.scale = networks.ConvTranspose2d(i_channels, o_channels, kernel_size=3, stride=2, padding=1, output_padding=1)
+        self.scale = networks.ConvTranspose2d(i_channels, o_channels, 3, 2, 1, 1)
         self.scale = params.weight_norm(self.scale)
         self.shift = networks.GroupNorm(32, o_channels)
         self.swish = networks.SiLU()
@@ -50,7 +50,6 @@ class ConcatenationBlock(networks.Module):
         return self.swish(self.shift(self.merge(torch.cat([a, b], 1))))
 
 
-
 # --------------------------------------------------------------------------------------------------
 # ------------------------------- CLASS :: Residual Connection Block -------------------------------
 # --------------------------------------------------------------------------------------------------
@@ -71,10 +70,12 @@ class ResidualBlock(networks.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
+        residual = x
+
         x = self.swish(self.norm1(self.conv1(x)))
         x = self.swish(self.norm2(self.conv2(x)))
 
-        return x
+        return x + residual
 
 
 # --------------------------------------------------------------------------------------------------
@@ -86,19 +87,21 @@ class DecoderFinal(networks.Module):
         super().__init__()
 
         self.embed = ConcatenationBlock(i_channels, t_channels, i_channels)
+        self.merge = ConcatenationBlock(i_channels, i_channels, i_channels)
         self.block = ResidualBlock(i_channels)
         self.final = networks.ConvTranspose2d(i_channels, o_channels, kernel_size=3, padding=1)
-        self.final = params.weight_norm(self.final)
 
         init(self)
 
     def forward(self, t: Timestamp, y: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
 
         x = self.embed(x, t.get(x))
+        x = self.merge(x, y)
         x = self.block(x)
         x = self.final(x)
 
-        return x
+        return torch.sigmoid(x)
+
 
 # --------------------------------------------------------------------------------------------------
 # ------------------------------------- CLASS :: Decoder Block -------------------------------------
@@ -112,13 +115,13 @@ class DecoderBlock(networks.Module):
         self.merge = ConcatenationBlock(i_channels, i_channels, i_channels)
         self.block = ResidualBlock(i_channels)
         self.scale = UpscaleBlock(i_channels, o_channels)
-        self.noise = networks.Dropout(0.05)
+        self.noise = networks.Dropout(0.00)
 
     def forward(self, t: Timestamp, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
 
         x = self.embed(x, t.get(x))
-        x = self.block(x)
         x = self.merge(x, y)
+        x = self.block(x)
         x = self.scale(x)
         x = self.noise(x)
 

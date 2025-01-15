@@ -21,32 +21,25 @@ from PIL import Image
 # --------------------------------------------------------------------------------------------------
 count = 0
 
-def save(t_o: torch.Tensor, t_n: torch.Tensor, t_t: torch.Tensor, t_p: torch.Tensor) -> None:
+def save(original: torch.Tensor, noisy: torch.Tensor, stamp: torch.Tensor) -> None:
 
-    convert = transforms.ToPILImage()
+    with torch.no_grad():
 
-    t_original   = t_o[0] # clean image
-    t_noise      = t_n[0] # noisy image
-    t_noisy      = t_t[0] # original noise
-    t_prediction = t_p[0] # predicted noise
+        for i in reversed(range(1, int(stamp[0].item()) + 1)):
+            t = Timestamp(torch.tensor([i]).to(stamp.device), channels=T_CHANNELS)
+            noisy = noisy - unet(t, noisy).detach()
 
-    t_reconstruction = t_noisy - t_prediction
+    o = transforms.ToPILImage()(original[0])
+    r = transforms.ToPILImage()(noisy[0])
 
-    original = convert(t_original)
-    reconstruction = convert(t_reconstruction)
-    noise = convert(t_noise)
-    prediction = convert(t_prediction)
-
-    output = Image.new('RGB', (256, 256), color='white')
-    output.paste(original, (0, 0))
-    output.paste(reconstruction, (128, 0))
-    output.paste(noise, (0, 128))
-    output.paste(prediction, (128, 128))
+    output = Image.new('RGB', (256, 128), color='white')
+    output.paste(o, (0,   0))
+    output.paste(r, (128, 0))
 
     global count
     count += 1
-    output.save(f'./Output/{count:05}-{uuid.uuid4()}.png')
 
+    output.save(f"./Output/{count:05}.png")
 
 shutil.rmtree("./Output")
 os.mkdir("./Output")
@@ -73,16 +66,15 @@ dataset = datatools.DataLoader(dataset=payload, sampler=sampler, batch_size=BATC
 # --------------------------------------- Main Training Loop ---------------------------------------
 # --------------------------------------------------------------------------------------------------
 for eid in range(EPOCHS):
-    for bid, (original, noise, noisy, step) in enumerate(dataset):
+    for bid, (original, noise, noisy, stamp) in enumerate(dataset):
 
-        original = original.to(DEVICE)
-        noise    = noise.to(DEVICE)
-        noisy    = noisy.to(DEVICE)
-        step     = step.to(DEVICE)
+        noise = noise.to(DEVICE)
+        noisy = noisy.to(DEVICE)
+        stamp = stamp.to(DEVICE)
 
         optimizer.zero_grad()
 
-        t = Timestamp(step, channels=T_CHANNELS)
+        t = Timestamp(stamp, channels=T_CHANNELS)
 
         prediction = unet(t, noisy)
         loss = torch.nn.functional.mse_loss(prediction, noise)
@@ -90,6 +82,11 @@ for eid in range(EPOCHS):
         loss.backward()
         optimizer.step()
 
-        if bid % 10 == 0:
+        if bid %  10 == 0:
+            unet = unet.eval()
             print(f"MSE Loss: {loss.item()}")
-            save(original, noise, noisy, prediction)
+
+        if bid % 100 == 0:
+            unet = unet.eval()
+            save(original[0:1], noisy[0:1], stamp[0:1])
+            unet = unet.train()

@@ -69,10 +69,12 @@ class ResidualBlock(networks.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
+        residual = x
+
         x = self.swish(self.norm1(self.conv1(x)))
         x = self.swish(self.norm2(self.conv2(x)))
 
-        return x
+        return x + residual
 
 
 # --------------------------------------------------------------------------------------------------
@@ -85,7 +87,9 @@ class EncoderEntry(networks.Module):
 
         self.embed = ConcatenationBlock(i_channels, t_channels, o_channels)
         self.block = ResidualBlock(o_channels)
-        self.noise = networks.Dropout(0.05)
+        self.noise = networks.Dropout(0.00)
+
+        init(self)
 
     def forward(self, t: Timestamp, x: torch.Tensor) -> torch.Tensor:
 
@@ -104,10 +108,12 @@ class EncoderBlock(networks.Module):
     def __init__(self, i_channels: int, o_channels: int, t_channels: int) -> None:
         super().__init__()
 
-        self.scale = init(DownscaleBlock(i_channels, o_channels))
-        self.embed = init(ConcatenationBlock(o_channels, t_channels, o_channels))
-        self.block = init(ResidualBlock(o_channels))
-        self.noise = init(networks.Dropout(0.05))
+        self.scale = DownscaleBlock(i_channels, o_channels)
+        self.embed = ConcatenationBlock(o_channels, t_channels, o_channels)
+        self.block = ResidualBlock(o_channels)
+        self.noise = networks.Dropout(0.00)
+
+        init(self)
 
     def forward(self, t: Timestamp, x: torch.Tensor) -> torch.Tensor:
 
