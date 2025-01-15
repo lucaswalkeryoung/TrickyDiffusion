@@ -6,7 +6,9 @@ from . Encoder import EncoderBlock
 from . Encoder import EncoderEntry
 from . Decoder import DecoderBlock
 from . Decoder import DecoderFinal
+
 from Utils.Timestamp import Timestamp
+from Utils.Init import init
 
 import torch.nn as networks
 import torch
@@ -38,7 +40,7 @@ class UNet(networks.Module):
         x2 = self.encoder2(t, x1)
         x3 = self.encoder3(t, x2)
 
-        y3 = self.bottleneck(t, x3)
+        y3 = self.bottleneck(x3)
 
         y2 = self.decoder3(t, x3, y3)
         y1 = self.decoder2(t, x2, y2)
